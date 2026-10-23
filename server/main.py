@@ -7,12 +7,14 @@ import time
 from collections import deque
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from .engine import Game, Player
 
 ORIGINS = {"https://commonpoker.vercel.app", "http://localhost:5173", "http://127.0.0.1:5173",
+           "http://localhost:5174", "http://127.0.0.1:5174",
+           "http://localhost:5175", "http://127.0.0.1:5175",
            "http://localhost:4173", "http://127.0.0.1:4173"}
 if os.getenv("LOCAL_ORIGIN"):
     ORIGINS.add(os.environ["LOCAL_ORIGIN"])
@@ -106,8 +108,9 @@ async def ticker():
         async with gate:
             for code, game in list(rooms.items()):
                 if game.deadline and time.time() >= game.deadline:
-                    game.action(game.turn, "fold")
-                    broadcast(game)
+                    if game.turn is not None and 0 <= game.turn < len(game.players):
+                        game.action(game.turn, "fold")
+                        broadcast(game)
                 if not any(p.connected for p in game.players) or time.monotonic() - game.updated > 3600:
                     for p in game.players:
                         peer = connections.get(p.id)
@@ -132,6 +135,21 @@ app.add_middleware(CORSMiddleware, allow_origins=sorted(ORIGINS), allow_methods=
 @app.get("/health")
 async def health():
     return {"status": "ok", "games": len(rooms)}
+
+
+@app.get("/rooms")
+async def lobby(response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    now = time.monotonic()
+    async with gate:
+        available = []
+        for game in rooms.values():
+            players = [p for p in game.players if p.connected]
+            if (not game.private and game.street in ("waiting", "showdown") and 0 < len(players) < 4
+                    and now - game.updated <= 3600):
+                available.append({"room": game.code, "host": players[0].name,
+                                  "players": len(players), "capacity": 4})
+    return {"rooms": available}
 
 
 @app.websocket("/ws")
@@ -161,6 +179,9 @@ async def gameplay(ws: WebSocket):
         if hello.get("type") == "join" or "room" in hello:
             if not isinstance(code, str) or not re.fullmatch(r"[0-9]{1,6}", code):
                 raise ValueError("Room number must be 1–6 digits")
+        private = hello.get("private", True)
+        if hello.get("type") == "create" and not isinstance(private, bool):
+            raise ValueError("Private must be true or false")
         async with gate:
             if hello.get("type") == "create":
                 if len(rooms) >= 10: raise ValueError("All 10 tables are occupied. Try later.")
@@ -171,7 +192,7 @@ async def gameplay(ws: WebSocket):
                     while code in rooms: code = str(secrets.randbelow(900000) + 100000)
                 elif code in rooms:
                     raise ValueError("Room number is already in use")
-                game = Game(code, owner_ip=ip)
+                game = Game(code, owner_ip=ip, private=private)
                 rooms[code] = game
             elif hello.get("type") == "join":
                 game = rooms.get(code)
@@ -205,6 +226,21 @@ async def gameplay(ws: WebSocket):
             if len(rate) == 16 and now - rate[0] < 2: raise ValueError("Too many messages")
             if data.get("type") == "pong":
                 last_pong = now
+                continue
+            if data.get("type") == "settings":
+                try:
+                    async with gate:
+                        if rooms.get(game.code) is not game: break
+                        if not any(p.id == pid for p in game.players if p.connected):
+                            raise ValueError("Must be in room to change room settings")
+                        if not isinstance(data.get("private"), bool):
+                            raise ValueError("Private must be true or false")
+                        game.private = data["private"]
+                        game.updated = time.monotonic()
+                        broadcast(game)
+                        peer.send({"type": "settings_saved"})
+                except ValueError as exc:
+                    peer.send({"type": "error", "scope": "settings", "message": str(exc)})
                 continue
             async with gate:
                 try:

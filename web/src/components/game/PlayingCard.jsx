@@ -19,7 +19,7 @@ function Pip({ suit, className }) {
 
 /**
  * size: "lg" (hero hole cards) | "sm" (opponent hole cards) | "md" (community)
- * All dimensions em-based; scale comes from --stage-scale.
+ * All dimensions inherit the game stage font size.
  */
 export function PlayingCard({ rank, suit, size = "md", tilt = 0 }) {
   const dims = { sm: "h-[4.9em] w-[3.2em]", md: "w-[5.4em] h-[8em]", lg: "w-[4em] h-[5.5em]" }[size]
@@ -27,10 +27,11 @@ export function PlayingCard({ rank, suit, size = "md", tilt = 0 }) {
   return (
     <div
       style={{ rotate: `${tilt}deg` }}
-      className={`${dims} relative shrink-0 rounded-[0.3em] bg-card-face shadow-[0_0.15em_0.5em_rgb(0_0_0_/_0.45)]`}
+      role="img" aria-label={`${rank} of ${{ s: 'spades', h: 'hearts', d: 'diamonds', c: 'clubs' }[suit]}`}
+      className={`playing-card ${dims} relative shrink-0 rounded-[0.3em] bg-card-face shadow-[0_0.15em_0.5em_rgb(0_0_0_/_0.45)]`}
     >
       <div className="absolute left-[0.45em] top-[0.3em] flex flex-col items-center leading-none">
-        <span className={`font-card text-[1.5em] font-medium ${red ? "text-suit-red" : "text-suit-dark"}`}>{rank}</span>
+        <span className={`card-rank font-card font-medium ${red ? "text-suit-red" : "text-suit-dark"}`}>{rank}</span>
         <Pip suit={suit} className="mt-[0.1em] size-[1.1em]" />
       </div>
       <Pip suit={suit} className="absolute right-[0.45em] bottom-[0.3em] size-[1.1em] rotate-180" />
@@ -40,7 +41,7 @@ export function PlayingCard({ rank, suit, size = "md", tilt = 0 }) {
 }
 
 export function CardBack({ tilt = 0, folded = false, size = "sm" }) {
-  const dims = { sm: "h-[4.9em] w-[3.2em]", lg: "h-[5.5em] w-[4em]" }[size]
+  const dims = { sm: "h-[4.9em] w-[3.2em]", md: "w-[5.4em] h-[8em]", lg: "h-[5.5em] w-[4em]" }[size] || "h-[4.9em] w-[3.2em]"
   return (
     <div
       style={{ rotate: `${tilt}deg` }}

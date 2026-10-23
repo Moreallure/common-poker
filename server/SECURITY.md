@@ -16,8 +16,8 @@ Scope: FastAPI application, game authority/privacy, WebSocket admission and life
 
 - State, cards, legal actions, turn deadlines and payouts are server-controlled. Requests cannot choose their acting player ID; identity is bound to the admitted socket. Hidden opponent cards are omitted from snapshots. The shuffle uses the operating system random source.
 - Raise amounts must be integers within server-calculated bounds; booleans and out-of-range amounts are rejected. Stale and out-of-turn actions cannot place bets. No client-provided chip balances, board or hand scores are trusted.
-- HTTP CORS and explicit WebSocket Origin checks allow the named frontend and local development origins. There are no cookies, passwords, database queries, file upload endpoints, command execution endpoints or client-selected filesystem paths.
-- Handshake: five seconds; message size: 512 characters at the application boundary and 1,024 bytes at the configured transport; incoming transport queue: four; compression: disabled. At most fifteen messages in a rolling two-second window per socket; the sixteenth closes it.
+- HTTP CORS and explicit WebSocket Origin checks allow the named frontend and local development origins. There are no account cookies, database queries, file upload endpoints, command execution endpoints or client-selected filesystem paths.
+- Handshake: five seconds; message size: 512 characters at the application boundary and 1,024 bytes at the configured transport; incoming transport queue: four; compression: disabled. The launcher selects Uvicorn's explicit `websockets` backend so `ws_max_queue=4` is applied instead of relying on `auto` backend selection. At most fifteen messages in a rolling two-second window per socket; the sixteenth closes it.
 - Twenty connection attempts per IP per minute. IP bookkeeping is capped at 2,048 addresses and expires after one minute. No pong for thirty seconds disconnects a client. Rooms idle for an hour expire. Empty rooms are removed. Admission and state mutation share one lock; all network writes and closes run outside it.
 - Exactly one worker/replica is required: process-local caps are not distributed quotas.
 
@@ -46,7 +46,6 @@ The example service limits memory to 256 MiB and CPU to half of one core. These 
 
 ## Deliberate residual limits
 
-- **Room numbers are not authentication.** The requested 1–6 digit custom numbers are guessable. Anyone with the number can join between hands if a seat is free. Origin checks protect browser access, but a custom WebSocket client can forge an Origin. No passwords/invites/accounts were added. Do not promise private or real-money tables with this design.
 - **Anonymous service availability is finite.** Distributed clients can still fill ten rooms or forty sockets. Per-IP quotas reduce single-source abuse; they cannot distinguish a botnet from players. People sharing a NAT share the two-room/eight-socket budget. A room remains attributed to its creator's IP for its lifetime, even after host transfer.
 - **No DDoS guarantee.** Nginx and application limits constrain normal request/frame abuse, not upstream bandwidth exhaustion or arbitrary TLS/TCP floods. Your hosting provider must supply volumetric protection if required.
 - **No persistent identity/state.** Restart loses rooms; reconnect creates a new seat. There are no funds of value and automatic refills remain intentional.

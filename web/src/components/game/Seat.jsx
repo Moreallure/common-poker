@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react"
-import { animate, motion, useMotionValue, useTransform } from "motion/react"
+import { animate, motion, useMotionValue } from "motion/react"
+import { useReducedMotion } from "../../hooks/useReducedMotion"
 import { CardBack, PlayingCard } from "./PlayingCard"
+import { getPokerHandName } from "../../pokerHand"
 
 function PersonGlyph() {
   return (
@@ -12,41 +14,48 @@ function PersonGlyph() {
 }
 
 function Avatar({ active, deadline, clockOffset, name }) {
-  const progress = useMotionValue(360)
-  const pie = useTransform(
-    progress,
-    (deg) => `conic-gradient(transparent ${deg}deg, rgb(0 0 0 / 0.35) ${deg}deg)`,
-  )
+  const progress = useMotionValue(1)
+  const reduce = useReducedMotion()
   useEffect(() => {
     if (!active || !deadline) {
-      progress.set(360)
+      progress.set(1)
       return
     }
     const seconds = Math.max(0, Math.min(20, (deadline * 1000 - Date.now() - clockOffset) / 1000))
-    progress.set((1 - seconds / 20) * 360)
-    const animation = animate(progress, 360, { duration: seconds, ease: "linear" })
+    if (reduce) {
+      progress.set(1)
+      return
+    }
+    progress.set(seconds / 20)
+    const animation = animate(progress, 0, { duration: seconds, ease: "linear" })
     return () => animation.stop()
-  }, [active, deadline, clockOffset, progress])
+  }, [active, deadline, clockOffset, progress, reduce])
   return (
     <div role="img" aria-label={active ? `${name}'s turn` : name} className="relative">
       <div className="relative grid size-[5.6em] shrink-0 place-items-center rounded-full bg-avatar ring-[0.14em] ring-ink/80 ring-offset-[0.28em] ring-offset-bg shadow-[0_0.2em_0.8em_rgb(0_0_0_/_0.4)]">
         <PersonGlyph />
       </div>
-      {/* timer pie shadows the avatar face as a growing sector */}
-      <motion.div
-        style={{ background: pie }}
-        className="pointer-events-none absolute inset-0 rounded-full"
-        aria-hidden
-      />
+      {active && <svg viewBox="0 0 64 64" className="turn-ring" aria-hidden>
+        <motion.circle cx="32" cy="32" r="30" fill="none" stroke="var(--color-accent)" strokeWidth="2.5" strokeLinecap="round" style={{ pathLength: progress }} />
+      </svg>}
     </div>
   )
 }
 
-function Label({ name, stack, dealer, connected }) {
+function Label({ name, stack, dealer, connected, badges, handName, isHost }) {
   return (
-    <div className="leading-tight whitespace-nowrap">
-      <div className="text-[0.95em] text-ink-dim" title={dealer ? "Dealer" : undefined}>{name}<span className="sr-only">{dealer ? " · dealer" : ""}{!connected ? " · offline" : ""}</span></div>
-      <div className="font-mono text-[1.5em] font-light text-ink">${stack.toLocaleString()}</div>
+    <div className="seat-label">
+      <div className="seat-name flex items-center justify-center gap-1" title={name}>
+        {isHost && <svg viewBox="0 0 20 20" className="size-[1em] shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m2.5 6.5 4.5 3 3-6 3 6 4.5-3L16 15.5H4L2.5 6.5Z" />
+          <path d="M5 17.5h10" />
+        </svg>}
+        <span className="min-w-0 truncate">{name}</span>
+        <span className="sr-only">{isHost ? " · host" : ""}{dealer ? " · dealer" : ""}{!connected ? " · offline" : ""}</span>
+      </div>
+      <div className="seat-stack">${stack.toLocaleString()}</div>
+      {handName && <div className="hand-rank">{handName}</div>}
+      <div className="seat-badges">{badges}</div>
     </div>
   )
 }
@@ -56,14 +65,13 @@ function Fan({ children }) {
   return <div className="flex [&>*:not(:first-child)]:-ml-[1.5em]">{children}</div>
 }
 
-function FlipCard({ card, tilt, revealed, onToggle, size = "lg" }) {
+function FlipCard({ card, tilt, revealed, size = "lg" }) {
+  const reduce = useReducedMotion()
   const dims = { sm: "h-[4.9em] w-[3.2em]", lg: "h-[5.5em] w-[4em]" }[size]
+  if (reduce) return revealed ? <PlayingCard {...card} size={size} tilt={tilt} /> : <CardBack size={size} tilt={tilt} />
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-label={revealed ? "Hide hand" : "Reveal hand"}
-      className={`${dims} shrink-0 cursor-pointer`}
+    <div
+      className={`${dims} shrink-0`}
       style={{ perspective: "40em", rotate: `${tilt}deg` }}
     >
       <motion.div
@@ -71,20 +79,20 @@ function FlipCard({ card, tilt, revealed, onToggle, size = "lg" }) {
         style={{ transformStyle: "preserve-3d" }}
         initial={{ rotateY: 0 }}
         animate={{ rotateY: revealed ? 180 : 0 }}
-        transition={{ type: "spring", stiffness: 260, damping: 22 }}
+        transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
       >
-        <div className="absolute inset-0 [backface-visibility:hidden]">
+        <div aria-hidden={revealed} className="absolute inset-0 [backface-visibility:hidden]">
           <CardBack size={size} />
         </div>
-        <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)]">
+        <div aria-hidden={!revealed} className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)]">
           <PlayingCard size={size} {...card} />
         </div>
       </motion.div>
-    </button>
+    </div>
   )
 }
 
-// D means acted; X means folded. Positioned by GamePage.
+// D means acted; X means folded.
 export function StatusBadge({ status }) {
   const shadow = "shadow-[0_0.15em_0.4em_rgb(0_0_0_/_0.5)]"
   if (status === "x") {
@@ -116,16 +124,27 @@ export function BetBadge({ amount }) {
 
 /**
  * side: "left" | "right" | "top" | "hero" — composition per table position.
- * All sizes em-based; inherits --stage-scale from the stage element.
+ * Card and avatar sizes inherit the stage font size; labels stay readable.
  */
-export function Seat({ side, name, stack, cards = [], state = "active", active, deadline, clockOffset, connected, dealer }) {
+export function Seat({ side, name, stack, cards = [], board = [], state = "active", active, deadline, clockOffset, connected, dealer, badges, isHost = false }) {
   const faded = state === "folded"
+  const cardKey = String(cards?.[0]?.rank || '') + String(cards?.[0]?.suit || '') + String(cards?.[1]?.rank || '') + String(cards?.[1]?.suit || '')
+  const [lastCardKey, setLastCardKey] = useState(cardKey)
   const [revealed, setRevealed] = useState(true)
+  const reduce = useReducedMotion()
+
+  if (cardKey !== lastCardKey) {
+    setLastCardKey(cardKey)
+    setRevealed(true)
+  }
+  const handName = !faded && cards?.length === 2 && cards.every(card => card?.rank) && (board?.length ?? 0) >= 3
+    ? getPokerHandName([...cards, ...board])
+    : null
   const avatar = <Avatar active={active} deadline={deadline} clockOffset={clockOffset} name={name} />
-  const label = <Label name={name} stack={stack} dealer={dealer} connected={connected} />
+  const label = <Label name={name} stack={stack} dealer={dealer} connected={connected} badges={badges} handName={handName} isHost={isHost} />
 
   const cardEls = cards.length ? (
-    <div className={`flex ${faded ? "opacity-60" : ""}`}>
+    <motion.div className="seat-hand" initial={reduce ? false : { opacity: 0 }} animate={{ opacity: faded ? 0.45 : 1 }} transition={{ duration: reduce ? 0 : 0.2 }}>
       <Fan>
         {cards.map((c, i) => {
           const size = side === "hero" ? "lg" : "sm"
@@ -136,15 +155,14 @@ export function Seat({ side, name, stack, cards = [], state = "active", active, 
               card={c}
               tilt={tilt}
               size={size}
-              revealed={revealed}
-              onToggle={() => setRevealed((r) => !r)}
+              revealed={side === "hero" ? revealed : true}
             />
           ) : (
             <CardBack key={i} tilt={tilt} size={size} folded={faded} />
           )
         })}
       </Fan>
-    </div>
+    </motion.div>
   ) : null
 
   if (state === "empty") {
@@ -156,23 +174,13 @@ export function Seat({ side, name, stack, cards = [], state = "active", active, 
     )
   }
 
-  if (side === "left" || side === "right") {
-    return (
-      <div className="flex flex-col">
-        <div className={`flex items-center ${side === "right" ? "flex-row-reverse" : ""}`}>
-          {avatar}
-          {cardEls}
-        </div>
-        <div className={`mt-[0.7em] ${side === "right" ? "self-end" : ""} w-[5.6em]`}>{label}</div>
-      </div>
-    )
-  }
-
-  // "top" and "hero": single row [avatar, cards, label]
   return (
-    <div className="flex items-center gap-[0.9em]">
-      {avatar}
-      {cardEls}
+    <div className={`player-seat player-seat-${side}`}>
+      <div className="seat-hand-row">
+        {avatar}
+        {side === "hero" && cards.some(card => card.rank) ? <button type="button" className="hand-toggle"
+          aria-label={revealed ? "Hide hand" : "Reveal hand"} onClick={() => setRevealed(value => !value)}>{cardEls}</button> : cardEls}
+      </div>
       {label}
     </div>
   )

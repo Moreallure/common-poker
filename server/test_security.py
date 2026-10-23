@@ -104,6 +104,7 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(config["workers"], 1)
         self.assertEqual(config["ws_max_size"], 1024)
         self.assertEqual(config["ws_max_queue"], 4)
+        self.assertEqual(config["ws"], "websockets")
         self.assertFalse(config["ws_per_message_deflate"])
 
     def test_proxy_trust_requires_explicit_addresses(self):

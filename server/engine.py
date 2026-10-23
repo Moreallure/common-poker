@@ -56,9 +56,10 @@ class Player:
 
 
 class Game:
-    def __init__(self, code, owner_ip=None):
+    def __init__(self, code, owner_ip=None, private=True):
         self.code = code
         self.owner_ip = owner_ip
+        self.private = private
         self.players = []
         self.dealer = -1
         self.turn = None
@@ -215,6 +216,7 @@ class Game:
     def snapshot(self, viewer):
         reveal = self.street == "showdown" and len(self.board) == 5
         return {"type": "state", "room": self.code, "you": viewer, "street": self.street,
+                "private": self.private,
                 "dealer": self.dealer, "turn": self.turn, "deadline": self.deadline,
                 "serverTime": time.time(), "board": [card(c) for c in self.board],
                 "pot": sum(p.total for p in self.players), "message": self.message,

@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 from . import main
 from .test_engine import cards
+from .engine import Game, Player
 
 ORIGIN = {"origin": "http://localhost:5173"}
 
@@ -35,6 +36,83 @@ class WebSocketTestCase(unittest.TestCase):
 
 
 class ServerTests(WebSocketTestCase):
+    def test_lobby_tracks_room_availability_and_host_transfer(self):
+        with contextlib.ExitStack() as stack:
+            a, hosted = self.connect(stack, type="create", room="42", name="Host", private=False)
+            response = self.client.get("/rooms", headers=ORIGIN)
+            self.assertEqual(response.headers["cache-control"], "no-store")
+            self.assertEqual(response.json(), {"rooms": [
+                {"room": "42", "host": "Host", "players": 1, "capacity": 4}]})
+            b, _ = self.connect(stack, type="join", room="42", name="Guest")
+            state(a)
+            self.assertEqual(self.client.get("/rooms").json()["rooms"][0]["players"], 2)
+            a.send_json({"type": "start"})
+            current = state(a)
+            state(b)
+            self.assertEqual(self.client.get("/rooms").json(), {"rooms": []})
+            a.send_json({"type": "action", "action": "fold", "turn": current["deadline"]})
+            state(a); state(b)
+            self.assertEqual(len(self.client.get("/rooms").json()["rooms"]), 1)
+            a.close()
+            state(b)
+            self.assertEqual(self.client.get("/rooms").json(), {"rooms": [
+                {"room": "42", "host": "Guest", "players": 1, "capacity": 4}]})
+
+    def test_lobby_omits_full_empty_expired_and_running_tables(self):
+        for code, count in [("1", 4), ("2", 0), ("3", 1), ("4", 2), ("5", 4)]:
+            game = main.rooms[code] = Game(code)
+            game.players = [Player(str(i), "Player") for i in range(count)]
+        main.rooms["5"].private = False
+        main.rooms["3"].updated -= 3601
+        main.rooms["4"].street = "preflop"
+        main.rooms["5"].players[0].connected = False
+        self.assertEqual(self.client.get("/rooms").json(), {"rooms": [
+            {"room": "5", "host": "Player", "players": 3, "capacity": 4}]})
+
+    def test_host_settings_control_lobby(self):
+        with contextlib.ExitStack() as stack:
+            host, first = self.connect(stack, type="create", room="81")
+            guest, _ = self.connect(stack, type="join", room="81")
+            state(host)
+            # Any seated player can configure room settings
+            guest.send_json({"type": "settings", "private": True})
+            guest_state = state(guest)
+            self.assertTrue(guest_state["private"])
+            self.assertEqual(state(guest)["type"], "settings_saved")
+            state(host)
+            self.assertTrue(main.rooms["81"].private)
+            host.send_json({"type": "settings", "private": False})
+            updated = state(host)
+            self.assertFalse(updated["private"])
+            self.assertEqual(state(host)["type"], "settings_saved")
+            state(guest)
+            listed = self.client.get("/rooms").json()["rooms"][0]
+            self.assertEqual(listed["room"], "81")
+
+    def test_invalid_settings_do_not_mutate_room(self):
+        with contextlib.ExitStack() as stack:
+            host, _ = self.connect(stack, type="create", room="83")
+            for settings in [{"private": 1}, {"private": "invalid"}]:
+                host.send_json({"type": "settings", **settings})
+                self.assertEqual(state(host)["scope"], "settings")
+                self.assertTrue(main.rooms["83"].private)
+
+    def test_private_rooms_are_hidden_but_joinable_by_room_number(self):
+        with contextlib.ExitStack() as stack:
+            host, hosted = self.connect(stack, type="create", room="314159")
+            self.assertTrue(hosted["private"])
+            self.assertEqual(self.client.get("/rooms").json(), {"rooms": []})
+            guest, joined = self.connect(stack, type="join", room="314159")
+            self.assertTrue(joined["private"])
+            self.assertEqual(len(joined["players"]), 2)
+            state(host)
+
+    def test_create_rejects_non_boolean_private_option(self):
+        with contextlib.ExitStack() as stack:
+            _, rejected = self.connect(stack, type="create", room="51", private=1)
+            self.assertEqual(rejected["message"], "Private must be true or false")
+            self.assertNotIn("51", main.rooms)
+
     def test_origin_and_cors(self):
         with self.assertRaises(WebSocketDisconnect):
             with self.client.websocket_connect("/ws", headers={"origin": "https://evil.example"}): pass
