@@ -25,10 +25,12 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(rank(cards("As Ah Ad Ac Ks Kh Kd")), (7, 14, 13))
 
     def test_winning_hand_names(self):
-        expected = ["High card", "One pair", "Two pair", "Three of a kind", "Straight",
+        expected = ["King high", "One pair", "Two pair", "Three of a kind", "Straight",
                     "Flush", "Full house", "Four of a kind", "Straight flush"]
         for category, name in enumerate(expected):
             self.assertEqual(hand_name((category, 13)), name)
+        self.assertEqual(hand_name((0, 14)), "Ace high")
+        self.assertEqual(hand_name((0, 2)), "2 high")
         self.assertEqual(hand_name(rank(cards("Ts Js Qs Ks As"))), "Royal flush")
 
     def test_heads_up_blinds_and_street_reset(self):
@@ -68,6 +70,9 @@ class EngineTests(unittest.TestCase):
         g.showdown()
         self.assertEqual([p.stack for p in g.players], [150, 100, 100])
         self.assertEqual(g.message, "0 wins $150 (One pair) · 1 wins $100 (One pair)")
+        self.assertEqual(g.snapshot("0")["awards"], [
+            {"player": "0", "amount": 150}, {"player": "1", "amount": 100},
+        ])
 
     def test_split_and_odd_chip_order(self):
         g = Game("123456")
@@ -83,6 +88,7 @@ class EngineTests(unittest.TestCase):
         g = self.game()
         g.action(g.turn, "fold")
         self.assertEqual(g.message, "P1 wins $30 · All others folded")
+        self.assertEqual(g.snapshot("0")["awards"], [{"player": "1", "amount": 30}])
         self.assertEqual(g.snapshot("0")["players"][1]["cards"], [{}, {}])
 
     def test_bankrupt_players_refill_after_payout_only(self):
@@ -154,11 +160,11 @@ class EngineTests(unittest.TestCase):
         for _ in range(300):
             stacks = [rng.randrange(1, 1001) for _ in range(rng.randrange(2, 5))]
             funded = 0
-            def finish_and_refill(game, message):
+            def finish_and_refill(game, message, awards=None):
                 nonlocal funded
                 self.assertEqual(sum(p.stack for p in game.players), sum(stacks))
                 funded = 1000 * sum(p.connected and p.stack == 0 for p in game.players)
-                finish(game, message)
+                finish(game, message, awards)
             with patch.object(Game, "finish", finish_and_refill):
                 g = self.game(stacks)
                 for turn in range(200):

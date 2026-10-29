@@ -28,6 +28,19 @@
   --stage-bottom-pad: clamp(1.5rem, 5vmin, 5rem);
 }
 
+:root {
+  --duration-instant: 120ms;
+  --duration-fast: 160ms;
+  --duration-exit: 180ms;
+  --duration-standard: 240ms;
+  --duration-considered: 480ms;
+  --duration-spring: 580ms;
+  --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-standard: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-spring: cubic-bezier(0.18, 0.85, 0.32, 1.08);
+}
+
 html,
 body,
 #root {
@@ -65,8 +78,65 @@ a,
   -webkit-touch-callout: none;
 }
 
+button:not(:disabled),
+a,
+[role="button"] {
+  transition:
+    transform var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
 button:active,
 a:active,
 [role="button"]:active {
-  transform: scale(0.98);
+  transform: scale(0.97);
+}
+
+.turn-ring {
+  position: absolute;
+  inset: -5px;
+  width: calc(100% + 10px);
+  height: calc(100% + 10px);
+  rotate: -90deg;
+  pointer-events: none;
+}
+
+.raise-slider {
+  accent-color: var(--color-suit-dark);
+  cursor: ns-resize;
+}
+
+.raise-slider:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 4px;
+  border-radius: 999px;
+}
+
+html[data-reduce-motion="true"] button,
+html[data-reduce-motion="true"] a,
+html[data-reduce-motion="true"] [role="button"] {
+  transition: none !important;
+}
+
+html[data-reduce-motion="true"] button:active,
+html[data-reduce-motion="true"] a:active,
+html[data-reduce-motion="true"] [role="button"]:active {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-reduce-motion="false"]) button,
+  html:not([data-reduce-motion="false"]) a,
+  html:not([data-reduce-motion="false"]) [role="button"] {
+    transition: none !important;
+  }
+
+  html:not([data-reduce-motion="false"]) button:active,
+  html:not([data-reduce-motion="false"]) a:active,
+  html:not([data-reduce-motion="false"]) [role="button"]:active {
+    transform: none;
+  }
 }

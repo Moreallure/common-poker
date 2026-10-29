@@ -73,6 +73,7 @@ class Game:
         self.minimum = 20
         self.pending = set()
         self.message = "Waiting for players"
+        self.awards = []
         self.rankings = False
         self.updated = time.monotonic()
 
@@ -105,6 +106,7 @@ class Game:
         self.board = []
         self.street = "preflop"
         self.current, self.minimum = 20, 20
+        self.awards = []
         for i, p in enumerate(self.players):
             p.cards = [self.deck.pop(), self.deck.pop()] if i in seats else []
             p.bet = p.total = 0
@@ -157,7 +159,7 @@ class Game:
             winner = self.players[next(iter(alive))]
             pot = sum(p.total for p in self.players)
             winner.stack += pot
-            self.finish(f"{winner.name} wins ${pot:,} · All others folded")
+            self.finish(f"{winner.name} wins ${pot:,} · All others folded", [{"player": winner.id, "amount": pot}])
             return
         self.pending &= {i for i in alive if self.players[i].stack}
         # A lone player with chips only acts if still facing a bet.
@@ -183,9 +185,10 @@ class Game:
         self.pending = active if len(active) > 1 else set()
         self.advance(self.dealer)
 
-    def finish(self, message):
+    def finish(self, message, awards=None):
         self.street, self.turn, self.deadline = "showdown", None, None
         self.message = message
+        self.awards = awards or []
         self.pending.clear()
         for p in self.players:
             if p.connected and p.stack == 0:
@@ -214,8 +217,11 @@ class Game:
             for n, i in enumerate(order): awards[i] += pot // len(order) + (n < pot % len(order))
             previous = level
         for i, amount in awards.items(): self.players[i].stack += amount
-        self.finish(" · ".join(f"{self.players[i].name} wins ${amount:,} ({hand_name(results[i])})"
-                               for i, amount in awards.items()))
+        self.finish(
+            " · ".join(f"{self.players[i].name} wins ${amount:,} ({hand_name(results[i])})"
+                       for i, amount in awards.items()),
+            [{"player": self.players[i].id, "amount": amount} for i, amount in awards.items()],
+        )
 
     def snapshot(self, viewer):
         reveal = self.street == "showdown" and len(self.board) == 5
@@ -226,6 +232,7 @@ class Game:
                 "dealer": self.dealer, "turn": self.turn, "deadline": self.deadline,
                 "serverTime": time.time(), "board": [card(c) for c in self.board],
                 "pot": sum(p.total for p in self.players), "message": self.message,
+                "awards": self.awards,
                 "host": next((p.id for p in self.players if p.connected), None),
                 "rankings": self.rankings, "myHand": my_hand,
                 "players": [{"id": p.id, "name": p.name, "stack": p.stack, "bet": p.bet,

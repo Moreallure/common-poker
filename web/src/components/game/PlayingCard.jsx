@@ -40,7 +40,7 @@ export function PlayingCard({ rank, suit, size = "md", tilt = 0 }) {
 }
 
 export function CardBack({ tilt = 0, folded = false, size = "sm" }) {
-  const dims = { sm: "h-[4.9em] w-[3.2em]", lg: "h-[5.5em] w-[4em]" }[size]
+  const dims = { sm: "h-[4.9em] w-[3.2em]", md: "w-[5.4em] h-[8em]", lg: "h-[5.5em] w-[4em]" }[size]
   return (
     <div
       style={{ rotate: `${tilt}deg` }}

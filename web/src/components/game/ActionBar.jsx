@@ -1,4 +1,7 @@
-import { useId, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
+import { AnimatePresence, animate, motion, useMotionValue, useTransform } from "motion/react"
+import { motionTokens } from "../../motion"
+import { useMotionPreference } from "../../hooks/useMotionPreference"
 
 export function ActionBar({ legal, onAction, pot }) {
   const base =
@@ -6,9 +9,25 @@ export function ActionBar({ legal, onAction, pot }) {
   const [raiseOpen, setRaiseOpen] = useState(false)
   const [raiseTo, setRaiseTo] = useState(legal.minRaise)
   const [selectedPreset, setSelectedPreset] = useState(null)
+  const reduce = useMotionPreference()
+  const animatedRaiseTo = useMotionValue(raiseTo)
+  const formattedRaiseTo = useTransform(animatedRaiseTo, value => `$${Math.round(value).toLocaleString()}`)
   const raisePanelId = useId()
   const raiseButton = useRef(null)
   const clamp = (value) => Math.min(legal.maxRaise, Math.max(legal.minRaise, value))
+  useEffect(() => {
+    if (reduce) {
+      animatedRaiseTo.set(raiseTo)
+      return
+    }
+    const controls = animate(animatedRaiseTo, raiseTo, motionTokens.spring.snappy)
+    return () => controls.stop()
+  }, [animatedRaiseTo, raiseTo, reduce])
+
+  const closeRaise = () => {
+    setRaiseOpen(false)
+    raiseButton.current?.focus({ preventScroll: true })
+  }
   const presets = [
     { label: "All In", value: legal.maxRaise },
     { label: "½ Pot", value: clamp(Math.round(pot / 2)) },
@@ -17,12 +36,32 @@ export function ActionBar({ legal, onAction, pot }) {
   ]
 
   return (
-    <div className="flex flex-col items-end portrait:items-stretch">
+    <div
+      className="flex flex-col items-end portrait:items-stretch"
+      onKeyDown={event => {
+        if (event.key === 'Escape' && raiseOpen) {
+          event.preventDefault()
+          closeRaise()
+        }
+      }}
+    >
       {/* click-away layer closes the raise panel */}
-      {raiseOpen && <div className="fixed inset-0 z-20" onClick={() => setRaiseOpen(false)} aria-hidden />}
+      {raiseOpen && <div className="fixed inset-0 z-20" onClick={closeRaise} aria-hidden />}
       {/* raise panel hovers above the action row — no layout space */}
-      {raiseOpen && (
-        <div id={raisePanelId} className="absolute bottom-full right-0 z-30 mb-2 flex items-stretch gap-2 rounded-2xl border-[1.3px] border-ink/70 bg-card-face p-3 text-suit-dark shadow-[0_0.5em_2em_rgb(0_0_0_/_0.3)]">
+      <AnimatePresence initial={false}>
+        {raiseOpen && (
+        <motion.div
+          id={raisePanelId}
+          initial={reduce ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={reduce ? { opacity: 1, y: 0, transition: { duration: 0 } } : {
+            opacity: 0,
+            y: 4,
+            transition: { duration: motionTokens.duration.exit, ease: motionTokens.ease.exit },
+          }}
+          transition={reduce ? { duration: 0 } : motionTokens.spring.smooth}
+          className="absolute bottom-full right-0 z-30 mb-2 flex items-stretch gap-2 rounded-2xl border-[1.3px] border-ink/70 bg-card-face p-3 text-suit-dark shadow-[0_0.5em_2em_rgb(0_0_0_/_0.3)]"
+        >
           <div className="flex flex-col justify-center gap-2">
             {presets.map((preset) =>
               preset.add ? (
@@ -50,7 +89,7 @@ export function ActionBar({ legal, onAction, pot }) {
             )}
           </div>
           <div className="flex flex-col items-center gap-2">
-            <span className="w-16 text-center font-mono text-lg">${raiseTo.toLocaleString()}</span>
+            <motion.span aria-hidden="true" className="w-16 text-center font-mono text-lg tabular-nums">{formattedRaiseTo}</motion.span>
             <input
               type="range"
               min={legal.minRaise}
@@ -59,12 +98,13 @@ export function ActionBar({ legal, onAction, pot }) {
               value={raiseTo}
               disabled={legal.minRaise === legal.maxRaise}
               onChange={(e) => { setRaiseTo(Number(e.target.value)); setSelectedPreset(null) }}
-              className="w-1.5 min-h-24 flex-1 accent-[#292522] [direction:rtl] [writing-mode:vertical-lr]"
+              className="raise-slider w-1.5 min-h-24 flex-1 accent-[#292522] [direction:rtl] [writing-mode:vertical-lr]"
               aria-label="Raise to total for this street"
             />
           </div>
-        </div>
-      )}
+        </motion.div>
+        )}
+      </AnimatePresence>
       <div className="relative flex items-center justify-end gap-2 portrait:[&>button]:flex-1">
         <button type="button" onClick={() => onAction('fold')} className={`${base} flex items-center justify-center border-[1.3px] border-ink/70 text-ink hover:bg-ink/10`}>
           Fold
@@ -86,7 +126,7 @@ export function ActionBar({ legal, onAction, pot }) {
           }`}
         >
           <span>Raise</span>
-          {raiseOpen && <span className="w-8 text-right font-mono">${raiseTo.toLocaleString()}</span>}
+          {raiseOpen && <motion.span aria-hidden="true" className="w-8 text-right font-mono tabular-nums">{formattedRaiseTo}</motion.span>}
         </button>
       </div>
     </div>
